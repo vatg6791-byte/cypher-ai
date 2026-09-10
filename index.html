@@ -834,18 +834,10 @@ header{
     style="display:none"
 >
 
+<!-- استدعاء ملف الكونفيغ الخارجي -->
+<script src="config.js"></script>
 
 <script>
-
-/* ================= CONFIG (API SETTINGS) ================= */
-
-const CONFIG = {
-    // ضع رابط الـ API أو الباك إند الخاص بك هنا
-    API_URL: "https://api.openai.com/v1/chat/completions",
-    API_KEY: "YOUR_API_KEY_HERE",
-    MODEL: "gpt-4o-mini"
-};
-
 
 /* ================= ELEMENTS ================= */
 
@@ -887,10 +879,8 @@ const overlay =
 
 let attachedFiles = [];
 
-// مصفوفة حفظ سجل المحادثة لإرسالها للـ API مع السياق
-let chatHistory = [
-    { role: "system", content: "You are Cypher AI, a helpful and advanced assistant." }
-];
+// سجل المحادثة المتوافق مع هيكلة Gemini
+let chatHistory = [];
 
 
 /* ================= SIDEBAR ================= */
@@ -1197,7 +1187,7 @@ function typeText(element, text, callback) {
             element.textContent += text.charAt(i);
             i++;
             scrollChat();
-            setTimeout(typing, 15); // سرعة الكتابة لكل حرف
+            setTimeout(typing, 15);
         } else {
             if (callback) callback();
         }
@@ -1396,14 +1386,16 @@ async function sendMessage(){
     chat.appendChild(message);
 
 
-    // دمج النص مع أسماء الملفات المرفقة لإرسالها للـ API
     let fullPrompt = text;
     if (fileDescriptions.length > 0) {
         fullPrompt += "\n" + fileDescriptions.join("\n");
     }
 
-    // إضافة الرسالة لسجل المحادثة
-    chatHistory.push({ role: "user", content: fullPrompt });
+    // إضافة رسالة المستخدم إلى السجل بهيكلة Gemini
+    chatHistory.push({
+        role: "user",
+        parts: [{ text: fullPrompt }]
+    });
 
 
     /* RESET */
@@ -1437,35 +1429,41 @@ async function sendMessage(){
     scrollChat();
 
     try {
-        const response = await fetch(CONFIG.API_URL, {
+        const endpoint = `${CONFIG.API_URL}?key=${CONFIG.API_KEY}`;
+        const response = await fetch(endpoint, {
             method: "POST",
             headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${CONFIG.API_KEY}`
+                "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                model: CONFIG.MODEL,
-                messages: chatHistory
+                contents: chatHistory
             })
         });
 
         if (!response.ok) {
-            throw new Error("فشل الاتصال بالخادم أو مفتاح الـ API غير صالح");
+            throw new Error("فشل الاتصال بخادم Gemini");
         }
 
         const data = await response.json();
-        const aiResponseText = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : "تم استلام الرد بنجاح.";
+        const aiResponseText = data.candidates && 
+                               data.candidates[0] && 
+                               data.candidates[0].content && 
+                               data.candidates[0].content.parts[0].text 
+            ? data.candidates[0].content.parts[0].text 
+            : "تم استلام الرد بنجاح.";
 
-        // حفظ رد الذكاء الاصطناعي في سجل المحادثة
-        chatHistory.push({ role: "assistant", content: aiResponseText });
+        // إضافة رد النموذج إلى السجل
+        chatHistory.push({
+            role: "model",
+            parts: [{ text: aiResponseText }]
+        });
 
-        // تفعيل تأثير الكتابة الحية للرد
         typeText(ai, aiResponseText, () => {
             scrollChat();
         });
 
     } catch (error) {
-        ai.textContent = "حدث خطأ في الاتصال بالـ API: " + error.message;
+        ai.textContent = "خطأ في الاتصال: " + error.message;
         scrollChat();
     }
 
@@ -1553,7 +1551,7 @@ document
     function(){
 
         chat.innerHTML="";
-        chatHistory = [{ role: "system", content: "You are Cypher AI, a helpful and advanced assistant." }];
+        chatHistory = [];
 
         const welcome =
             document.createElement("div");
@@ -1579,7 +1577,7 @@ document
     function(){
 
         chat.innerHTML="";
-        chatHistory = [{ role: "system", content: "You are Cypher AI, a helpful and advanced assistant." }];
+        chatHistory = [];
 
         const welcome =
             document.createElement("div");
