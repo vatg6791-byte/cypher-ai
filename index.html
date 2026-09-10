@@ -837,6 +837,16 @@ header{
 
 <script>
 
+/* ================= CONFIG (API SETTINGS) ================= */
+
+const CONFIG = {
+    // ضع رابط الـ API أو الباك إند الخاص بك هنا
+    API_URL: "https://api.openai.com/v1/chat/completions",
+    API_KEY: "YOUR_API_KEY_HERE",
+    MODEL: "gpt-4o-mini"
+};
+
+
 /* ================= ELEMENTS ================= */
 
 const chat =
@@ -876,6 +886,11 @@ const overlay =
 /* ================= FILE STATE ================= */
 
 let attachedFiles = [];
+
+// مصفوفة حفظ سجل المحادثة لإرسالها للـ API مع السياق
+let chatHistory = [
+    { role: "system", content: "You are Cypher AI, a helpful and advanced assistant." }
+];
 
 
 /* ================= SIDEBAR ================= */
@@ -1171,9 +1186,29 @@ viewer.addEventListener(
 );
 
 
+/* ================= TYPING EFFECT ================= */
+
+function typeText(element, text, callback) {
+    let i = 0;
+    element.textContent = "";
+    
+    function typing() {
+        if (i < text.length) {
+            element.textContent += text.charAt(i);
+            i++;
+            scrollChat();
+            setTimeout(typing, 15); // سرعة الكتابة لكل حرف
+        } else {
+            if (callback) callback();
+        }
+    }
+    typing();
+}
+
+
 /* ================= SEND ================= */
 
-function sendMessage(){
+async function sendMessage(){
 
     const text =
         input.value.trim();
@@ -1215,6 +1250,8 @@ function sendMessage(){
 
     /* FILES */
 
+    let fileDescriptions = [];
+
     if(attachedFiles.length > 0){
 
         const imagesBox =
@@ -1233,6 +1270,8 @@ function sendMessage(){
 
         attachedFiles.forEach(
             function(item){
+
+                fileDescriptions.push(`[ملف مرفق: ${item.name} (${formatSize(item.size)})]`);
 
                 /* IMAGE */
 
@@ -1357,22 +1396,19 @@ function sendMessage(){
     chat.appendChild(message);
 
 
+    // دمج النص مع أسماء الملفات المرفقة لإرسالها للـ API
+    let fullPrompt = text;
+    if (fileDescriptions.length > 0) {
+        fullPrompt += "\n" + fileDescriptions.join("\n");
+    }
+
+    // إضافة الرسالة لسجل المحادثة
+    chatHistory.push({ role: "user", content: fullPrompt });
+
+
     /* RESET */
 
     input.value="";
-
-
-    attachedFiles.forEach(
-        function(item){
-
-            /*
-             * لا نحذف Object URL هنا
-             * لأن الصور تحتاجه بعد الإرسال.
-             */
-
-        }
-    );
-
 
     attachedFiles=[];
 
@@ -1388,27 +1424,50 @@ function sendMessage(){
     scrollChat();
 
 
-    /* DEMO RESPONSE */
+    /* API REQUEST & TYPING RESPONSE */
 
-    setTimeout(
-        function(){
+    const ai =
+        document.createElement("div");
 
-            const ai =
-                document.createElement("div");
+    ai.className =
+        "message ai";
 
-            ai.className =
-                "message ai";
+    ai.textContent = "جاري الكتابة...";
+    chat.appendChild(ai);
+    scrollChat();
 
-            ai.textContent =
-                "تم استلام الرسالة والملفات بنجاح.\n\nالواجهة جاهزة الآن لربط API الحقيقي.";
+    try {
+        const response = await fetch(CONFIG.API_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${CONFIG.API_KEY}`
+            },
+            body: JSON.stringify({
+                model: CONFIG.MODEL,
+                messages: chatHistory
+            })
+        });
 
-            chat.appendChild(ai);
+        if (!response.ok) {
+            throw new Error("فشل الاتصال بالخادم أو مفتاح الـ API غير صالح");
+        }
 
+        const data = await response.json();
+        const aiResponseText = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : "تم استلام الرد بنجاح.";
+
+        // حفظ رد الذكاء الاصطناعي في سجل المحادثة
+        chatHistory.push({ role: "assistant", content: aiResponseText });
+
+        // تفعيل تأثير الكتابة الحية للرد
+        typeText(ai, aiResponseText, () => {
             scrollChat();
+        });
 
-        },
-        700
-    );
+    } catch (error) {
+        ai.textContent = "حدث خطأ في الاتصال بالـ API: " + error.message;
+        scrollChat();
+    }
 
 }
 
@@ -1494,6 +1553,7 @@ document
     function(){
 
         chat.innerHTML="";
+        chatHistory = [{ role: "system", content: "You are Cypher AI, a helpful and advanced assistant." }];
 
         const welcome =
             document.createElement("div");
@@ -1519,6 +1579,7 @@ document
     function(){
 
         chat.innerHTML="";
+        chatHistory = [{ role: "system", content: "You are Cypher AI, a helpful and advanced assistant." }];
 
         const welcome =
             document.createElement("div");
